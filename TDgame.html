@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <link href="./TDgame.css" rel="stylesheet">
+        <style>
+            #cooldownTimer {
+                position: absolute;
+                top: 10px;
+                left: 50%;
+                transform: translateX(-50%);
+                font-size: 20px;
+                color: red;
+                display: none;
+            }
+            #tdboard {
+                display: block;
+                margin: 0 auto; /* Center horizontally */
+                position: absolute;
+                top: 50%; /* Center vertically */
+                left: 50%;
+                transform: translate(-50%, -50%); /* Adjust for both horizontal and vertical centering */
+            }
+        </style>
+    </head>
+    <body>
+        <div style="text-align: center; font-size: 24px; margin-bottom: 10px;">
+            Coins Collected: <span id="coinCounter">0</span>
+        </div>
+        <div style="text-align: center; margin-bottom: 10px;">
+            <button id="upgradeButton" disabled>Buy Gun (15 Coins)</button>
+        </div>
+        <div id="cooldownTimer">10</div>
+        <div style="text-align: center; margin-bottom: 10px;">
+            <button id="addCoinsButton">Add 10,000 Coins</button>
+            <button id="spawnEnemyButton">Spawn Enemy</button>
+        </div>
+        <canvas id="tdboard"></canvas>
+        <script>
+            const canvas = document.getElementById('tdboard');
+            const ctx = canvas.getContext('2d');
+            const coinCounter = document.getElementById('coinCounter');
+            const upgradeButton = document.getElementById('upgradeButton');
+            const cooldownTimer = document.getElementById('cooldownTimer');
+            const addCoinsButton = document.getElementById('addCoinsButton');
+            const spawnEnemyButton = document.getElementById('spawnEnemyButton');
+
+            canvas.width = window.innerWidth * .95;
+            canvas.height = window.innerHeight * 0.85; // Reduce height to make the background smaller vertically
+
+            const character = {
+                x: 50,
+                y: 50,
+                width: 30,
+                height: 30,
+                color: 'red',
+                speed: 5,
+                angle: 0 // Angle to face the cursor
+            };
+
+            const gun = {
+                width: 20,
+                height: 10,
+                color: 'gray'
+            };
+
+            const coin = {
+                x: Math.random() * (canvas.width - 20),
+                y: Math.random() * (canvas.height - 20),
+                width: 30,
+                height: 30,
+                color: 'gold',
+                innerCircleColor: 'orange'
+            };
+
+            const enemies = [];
+            const enemySpeed = 3;
+
+            let score = 0;
+            let hasGun = false;
+            let canShoot = true;
+
+            const keys = {};
+
+            window.addEventListener('keydown', (e) => {
+                keys[e.key] = true;
+            });
+
+            window.addEventListener('keyup', (e) => {
+                keys[e.key] = false;
+            });
+
+            canvas.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                // Calculate the angle between the character and the cursor
+                const dx = mouseX - (character.x + character.width / 2);
+                const dy = mouseY - (character.y + character.height / 2);
+                character.angle = Math.atan2(dy, dx);
+            });
+
+            canvas.addEventListener('click', (e) => {
+                if (hasGun && canShoot) {
+                    const rect = canvas.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const mouseY = e.clientY - rect.top;
+
+                    shootProjectile(mouseX, mouseY);
+                    startCooldown();
+                }
+            });
+
+            function startCooldown() {
+                canShoot = false;
+                let cooldown = 0; // 1 seconds
+                cooldownTimer.textContent = cooldown;
+                cooldownTimer.style.display = 'inline';
+
+                const interval = setInterval(() => {
+                    cooldown--;
+                    cooldownTimer.textContent = cooldown;
+
+                    if (cooldown <= 0) {
+                        clearInterval(interval);
+                        canShoot = true;
+                        cooldownTimer.style.display = 'none';
+                    }
+                }, 1000);
+            }
+
+            function updateCharacterPosition() {
+                if (keys['ArrowUp'] || keys['w']) character.y -= character.speed;
+                if (keys['ArrowDown'] || keys['s']) character.y += character.speed;
+                if (keys['ArrowLeft'] || keys['a']) character.x -= character.speed;
+                if (keys['ArrowRight'] || keys['d']) character.x += character.speed;
+
+                character.x = Math.max(0, Math.min(canvas.width - character.width, character.x));
+                character.y = Math.max(0, Math.min(canvas.height - character.height, character.y));
+            }
+
+            function drawCharacter() {
+                ctx.save();
+                ctx.translate(character.x + character.width / 2, character.y + character.height / 2);
+                ctx.rotate(character.angle);
+                ctx.fillStyle = character.color;
+                ctx.fillRect(-character.width / 2, -character.height / 2, character.width, character.height);
+
+                if (hasGun) {
+                    ctx.fillStyle = gun.color;
+                    ctx.fillRect(
+                        -gun.width / 2,
+                        -character.height / 2 - gun.height - 10, // Adjust gun position
+                        gun.width,
+                        gun.height
+                    );
+                }
+                ctx.restore();
+            }
+
+            function drawCoin() {
+                ctx.fillStyle = coin.color;
+                ctx.fillRect(coin.x, coin.y, coin.width, coin.height);
+
+                ctx.fillStyle = coin.innerCircleColor;
+                ctx.beginPath();
+                ctx.arc(
+                    coin.x + coin.width / 2,
+                    coin.y + coin.height / 2,
+                    Math.min(coin.width, coin.height) / 4,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+            }
+
+            function drawEnemies() {
+                enemies.forEach((enemy) => {
+                    ctx.fillStyle = enemy.color;
+                    ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+                });
+            }
+
+            function updateEnemyPositions() {
+                enemies.forEach((enemy) => {
+                    const dx = character.x - enemy.x;
+                    const dy = character.y - enemy.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    enemy.x += (dx / distance) * enemySpeed;
+                    enemy.y += (dy / distance) * enemySpeed;
+                });
+            }
+
+            function checkCoinCollision() {
+                if (
+                    character.x < coin.x + coin.width &&
+                    character.x + character.width > coin.x &&
+                    character.y < coin.y + coin.height &&
+                    character.y + character.height > coin.y
+                ) {
+                    score++;
+                    coinCounter.textContent = score;
+                    generateNewCoin();
+                    updateUpgradeButton();
+                }
+            }
+
+            function checkEnemyCollision() {
+                enemies.forEach((enemy) => {
+                    if (
+                        character.x < enemy.x + enemy.width &&
+                        character.x + character.width > enemy.x &&
+                        character.y < enemy.y + enemy.height &&
+                        character.y + character.height > enemy.y
+                    ) {
+                        score = Math.max(0, score - 1);
+                        coinCounter.textContent = score;
+                        updateUpgradeButton();
+                    }
+                });
+            }
+
+            function generateNewCoin() {
+                coin.x = Math.random() * (canvas.width - coin.width);
+                coin.y = Math.random() * (canvas.height - coin.height);
+            }
+
+            function spawnEnemy() {
+                enemies.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    width: 30,
+                    height: 30,
+                    color: 'blue'
+                });
+            }
+
+            function shootProjectile(targetX, targetY) {
+                const gunOffsetX = Math.cos(character.angle) * (character.width / 2 + gun.height + 10);
+                const gunOffsetY = Math.sin(character.angle) * (character.height / 2 + gun.height + 10);
+
+                const projectile = {
+                    x: character.x + character.width / 2 + gunOffsetX,
+                    y: character.y + character.height / 2 + gunOffsetY,
+                    width: 10,
+                    height: 5, // Make the projectile a small rectangle
+                    color: 'orange',
+                    speed: 10,
+                    targetX,
+                    targetY
+                };
+
+                const dx = targetX - projectile.x;
+                const dy = targetY - projectile.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                projectile.vx = (dx / distance) * projectile.speed;
+                projectile.vy = (dy / distance) * projectile.speed;
+
+                const interval = setInterval(() => {
+                    projectile.x += projectile.vx;
+                    projectile.y += projectile.vy;
+
+                    ctx.fillStyle = projectile.color;
+                    ctx.fillRect(projectile.x, projectile.y, projectile.width, projectile.height); // Draw rectangle
+
+                    enemies.forEach((enemy, index) => {
+                        if (
+                            projectile.x < enemy.x + enemy.width &&
+                            projectile.x + projectile.width > enemy.x &&
+                            projectile.y < enemy.y + enemy.height &&
+                            projectile.y + projectile.height > enemy.y
+                        ) {
+                            enemies.splice(index, 1); // Remove the enemy
+                            clearInterval(interval); // Stop the projectile
+                        }
+                    });
+
+                    if (
+                        projectile.x < 0 ||
+                        projectile.x > canvas.width ||
+                        projectile.y < 0 ||
+                        projectile.y > canvas.height
+                    ) {
+                        clearInterval(interval); // Stop the projectile if it goes out of bounds
+                    }
+                }, 16);
+            }
+
+            function updateUpgradeButton() {
+                if (score >= 15 && !hasGun) {
+                    upgradeButton.disabled = false;
+                } else {
+                    upgradeButton.disabled = true;
+                }
+            }
+
+            upgradeButton.addEventListener('click', () => {
+                if (score >= 15) {
+                    score -= 15;
+                    coinCounter.textContent = score;
+                    hasGun = true;
+                    upgradeButton.disabled = true;
+                }
+            });
+
+            addCoinsButton.addEventListener('click', () => {
+                score += 10000;
+                coinCounter.textContent = score;
+                updateUpgradeButton();
+            });
+
+            spawnEnemyButton.addEventListener('click', () => {
+                spawnEnemy();
+            });
+
+            function drawScore() {
+                updateEnemyPositions();
+                drawEnemies();
+                ctx.font = '20px Arial';
+                ctx.fillText(`Score: ${score}`, 10, 30);
+            }
+
+            function gameLoop() {
+                ctx.fillStyle = 'darkgray'; // Set background color to dark gray
+                ctx.fillRect(0, 0, canvas.width, canvas.height); // Fill the canvas with the background color
+                updateCharacterPosition();
+                drawCharacter();
+                drawCoin();
+                drawEnemies();
+                checkCoinCollision();
+                checkEnemyCollision();
+                drawScore();
+                requestAnimationFrame(gameLoop);
+            }
+
+            // Spawn 3 enemies at the start
+            for (let i = 0; i < 3; i++) {
+                spawnEnemy();
+            }
+
+            setInterval(generateNewCoin, 30000);
+            setInterval(spawnEnemy, 30000);
+
+            gameLoop();
+        </script>
+    </body>
+</html>
